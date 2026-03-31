@@ -1,0 +1,73 @@
+name: Build and Release Whisper Network
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: WhisperNetwork.exe
+            binary_path: dist/WhisperNetwork.exe
+            pyinstaller_opts: --windowed --onefile --name WhisperNetwork main.py
+          - os: ubuntu-latest
+            artifact_name: WhisperNetwork
+            binary_path: dist/WhisperNetwork
+            pyinstaller_opts: --windowed --onefile --name WhisperNetwork main.py
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build binary
+        run: pyinstaller --noconfirm ${{ matrix.pyinstaller_opts }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_path }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Package assets
+        run: |
+          cd release-assets
+          zip -r WhisperNetwork-windows.zip WhisperNetwork.exe
+          zip -r WhisperNetwork-linux.zip WhisperNetwork
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release-assets/WhisperNetwork-windows.zip
+            release-assets/WhisperNetwork-linux.zip
